@@ -1,0 +1,179 @@
+#!/usr/bin/env python
+import os 
+dir_path = os.path.dirname(os.path.realpath(__file__))
+
+import argparse
+
+def loadDB(path):
+    f = open(path, 'rw')
+    db = {}
+    i = 0
+    for l in f:
+        i += 1
+        key, note = (l[:-1]).split(':',1)
+        importance = int(key[0])
+        db[key[1:]] = (note, i, importance)
+    f.close()
+    return db
+
+def searchSort(k):
+    return k[0]*10+k[2]
+
+def printNotesWithKeys(db, keys):
+    ml = 0
+    mi = 0
+    for k in keys:
+        ml = max(ml, len(k))
+        mi = max(mi, len(str(db[k][1])))
+    for k in keys:
+        print(str(db[k][2]) + (' #{:0>'+str(mi)+'} ').format(db[k][1]) + ('{:>'+str(ml)+'}').format(k) + ' : ' + db[k][0])
+
+def search(path, key, importance):
+    db = loadDB(path)
+    results = []
+    words1 = set(key.split(' '))
+    words_in_key = key.count(' ')
+    for k in list(db.keys()):
+        if db[k][2] > importance:
+            continue
+        if key == k:
+            results.append( (0, k, db[k][2]) )
+        elif key in k:
+            results.append( (100+abs(words_in_key - k.count(' ')), k, db[k][2]) )
+        else:
+            words2 = set(k.split(' '))
+            words3 = words1 & words2
+            if len(words3) > 0:
+                results.append( (len(words3)+10000, k, db[k][2]) )
+    results.sort(key=searchSort)
+    ret = [results[i][1] for i in range(len(results))]
+    printNotesWithKeys(db, ret)
+
+def add(key, note, importance, path):
+    db = loadDB(path)
+    i = 1
+    keylen = len(key)
+    while i < keylen:
+        if (key[i] == ' ' and key[i-1] == ' ') or not ( key[i].isalpha() or key[i] == ' '):
+            key = key[:i] + key[i+1:]
+            keylen -= 1
+        i += 1 
+    key.lower()
+    if key in db:
+        print('That key was was already used for note #'+str(db[key][1]))
+        return 
+    note.replace('\n', ' ')
+    f = open(path, 'a+')
+    f.write(str(importance)+key + ':' + note +'\n')
+    f.close()
+
+def remove(index, path):
+    f = open(path, 'r')
+    lines = [l for l in f]
+    f.close()
+    if index > len(lines):
+        print('Note index is bigger than notes database size')
+        return
+    f = open(path, 'w')
+    for i in range(len(lines)):
+        if i == index:
+            continue
+        f.write(lines[i])
+    f.close()
+
+def edit(index, note, key, importance, path):
+    db = loadDB(path)
+    if key in db:
+        print('That key was was already used for note #'+str(db[key][1]))
+        return
+    f = open(path, 'r')
+    lines = [l for l in f]
+    f.close()
+    f = open(path, 'w')
+    for i in range(len(lines)):
+        if i == index:
+            if importance=='':
+                importance = int(lines[i].split(':', 1)[0][0])
+            if key=='':
+                note = lines[i].split(':', 1)[0][1:]
+            if note=='':
+                note = lines[i].split(':', 1)[1]
+            f.write(str(importance)+key+':'+note)
+        else :
+            f.write(lines[i])
+    f.close()
+
+parser = argparse.ArgumentParser(description='Process your notes')
+parser.add_argument('-ls', '--list', help='List all notes. You can use modifier -i to list notes with specific importance', action='store_true')
+parser.add_argument('-a', '--add', help='Add note.', action='store_true')
+parser.add_argument('-e', '--edit',       type=int, nargs=1, help='Edit note with given index')
+parser.add_argument('-r', '--remove',     type=int, nargs=1, help='Removing note with given ingex. Be careful! After removing a note, indexes of notes with bigger indexes will decrease')
+parser.add_argument('-n', '--note',       type=str, nargs=1, help='Note text. Note can contain whatever you want \
+                    BUT should contain only ONE line, newline symbols will be replaced by space')
+parser.add_argument('-k', '--key',        type=str, nargs=1, help='Key. Key should be just few words. Commas, dots and other special symbols\
+                    will be removed, all letters will be lowercased')
+parser.add_argument('-s', '--search',     type=str, nargs=1, help='Search for notes with given or similar key')
+parser.add_argument('-i', '--importance', type=int, nargs=1, help='Importance of note [0-9], 0 - most important, 9 - not important at all (why you add it then?). \
+                    If you searching then it will be shown all results with that or greater(with smaller number) importance.\
+                    If you adding new note, than by default it\'s importance is zero')
+parser.add_argument('-p', '--path',       type=str, nargs=1, help='Path to note storage. Default path is ./notes_database')
+args = parser.parse_args()
+
+path = dir_path+'/notes_database'
+if args.path:
+    path = args.path[0]
+importance = 0
+if args.importance:
+    importance = args.importance[0]
+
+if args.add:
+    if args.edit:
+        print('Use either -a or -e option')
+    elif args.remove:
+        print('Use either -a or -r option')
+    elif args.list:
+        print('Use either -a or -ls option')
+    elif args.search:
+        print('Use either -a or -s option')
+    elif not (args.key and args.note):
+        print('You have to specify key and note to add a note')
+    else:
+        add(args.key[0], args.note[0], importance, path)
+elif args.edit:
+    if args.remove:
+        print('Use either -e or -r option')
+    elif args.search:
+        print('Use either -e or -s option')
+    elif args.list:
+        print('Use either -e or -ls option')
+    else:
+        key = ''
+        if args.key:
+            key = args.key[0]
+        note = ''
+        if args.note:
+            note = args.note[0]
+        edit(args.edit[0]-1, note, key, importance, path)
+elif args.remove:
+    if args.search:
+        print('Use either -r or -s option')
+    elif args.list:
+        print('Use either -r or -ls option')
+    remove(args.remove[0]-1, path)
+elif args.search:
+    if args.list:
+        print('Use either -s or -ls option')
+    importance = 9
+    if args.importance:
+        importance = args.importance[0]
+    search(path, args.search[0], importance)
+elif args.list:
+    db = loadDB(path)
+    all_keys = db.keys()
+    keys = []
+    if args.importance:
+        keys = [k for k in all_keys if db[k][2] == args.importance[0]]
+    else:
+        keys = all_keys
+    printNotesWithKeys(db, keys)
+    
